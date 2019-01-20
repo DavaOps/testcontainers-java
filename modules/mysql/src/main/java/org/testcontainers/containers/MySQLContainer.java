@@ -3,6 +3,7 @@ package org.testcontainers.containers;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -20,6 +21,7 @@ public class MySQLContainer<SELF extends MySQLContainer<SELF>> extends JdbcDatab
     private String username = "test";
     private String password = "test";
     private static final String MYSQL_ROOT_USER = "root";
+	private static final int MIN_VERSION_REQUIRES_TRADITIONAL_AUTH = 8;
 
     public MySQLContainer() {
         super(IMAGE + ":" + DEFAULT_TAG);
@@ -67,9 +69,15 @@ public class MySQLContainer<SELF extends MySQLContainer<SELF>> extends JdbcDatab
     @Override
     protected String constructUrlForConnection(String queryString) {
         String url = super.constructUrlForConnection(queryString);
+        String separator = url.contains("?") ? "&" : "?";
+
+        if (sha2AuthIsNeeded(getDockerImageName())) {
+            url += separator + "authenticationPlugins=com.mysql.cj.protocol.a.authentication.CachingSha2PasswordPlugin" + 
+                   "&authenticationPlugins=com.mysql.cj.protocol.a.authentication.CachingSha2PasswordPlugin";
+            separator = "&";
+        }
 
         if (! url.contains("useSSL=")) {
-            String separator = url.contains("?") ? "&" : "?";
             return url + separator + "useSSL=false";
         } else {
             return url;
@@ -117,5 +125,23 @@ public class MySQLContainer<SELF extends MySQLContainer<SELF>> extends JdbcDatab
     public SELF withPassword(final String password) {
         this.password = password;
         return self();
+    }
+
+    public boolean sha2AuthIsNeeded(String imageName) {
+        String[] image = imageName.split(":");
+        String tag = image.length == 1 ? "latest": image[1]; 
+
+        if(Objects.equals(tag, "latest")) {
+            return true;
+        }
+
+        try {
+            int version = Integer.parseInt(tag.split("\\.")[0]);
+            if (version >= MIN_VERSION_REQUIRES_TRADITIONAL_AUTH) {
+                return true;
+            }
+        } catch (NumberFormatException e) {
+        }
+        return false;
     }
 }
